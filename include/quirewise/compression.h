@@ -35,7 +35,8 @@ typedef struct QwCompression7zCoder {
 /*
  * Compression and decompression functions return 1 on success and 0 on
  * invalid arguments, malformed input, insufficient output capacity, or a
- * checksum mismatch. Inflate functions require the exact output size.
+ * checksum mismatch. Strict inflate functions require exact output sizes;
+ * XZ prefix decoding requires the requested prefix size.
  * Deflate functions write to caller-owned, non-overlapping buffers.
  */
 uint32_t qw_compression_abi_version(void);
@@ -61,6 +62,20 @@ int qw_compression_inflate_7z_chain(
     const QwCompression7zCoder *coders, size_t coder_count,
     const uint8_t *input, size_t input_size,
     uint8_t *output, size_t output_size, size_t memory_limit);
+
+/* Decode one complete XZ stream, requiring exact input and output sizes.
+ * memory_limit caps decoder memory. Input and output buffers must not overlap. */
+int qw_compression_inflate_xz(const uint8_t *input, size_t input_size,
+                              uint8_t *output, size_t output_size,
+                              size_t memory_limit);
+
+/* Decode an XZ stream prefix into exactly output_size bytes. The function
+ * stops when the output buffer fills, so it may not validate the stream
+ * trailer or remaining input. memory_limit caps decoder memory. Input and
+ * output buffers must not overlap. */
+int qw_compression_inflate_xz_prefix(const uint8_t *input, size_t input_size,
+                                     uint8_t *output, size_t output_size,
+                                     size_t memory_limit);
 
 /* RFC 1951 stored-block encoder. Empty input is encoded as one empty block. */
 int qw_compression_deflate_raw_stored(const uint8_t *input, size_t input_size,
