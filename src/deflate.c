@@ -98,6 +98,12 @@ static int decode_symbol(QwDeflateBitReader *reader,
     return 0;
 }
 
+enum {
+    QW_DEFLATE_INVALID = QW_COMPRESSION_INFLATE_ERROR,
+    QW_DEFLATE_OK = QW_COMPRESSION_INFLATE_OK,
+    QW_DEFLATE_OUTPUT_FULL = QW_COMPRESSION_INFLATE_OUTPUT_FULL
+};
+
 static int build_fixed_trees(QwDeflateHuffman *literal,
                              QwDeflateHuffman *distance)
 {
@@ -178,7 +184,7 @@ static int build_dynamic_trees(QwDeflateBitReader *reader,
 static int inflate_codes(QwDeflateBitReader *reader,
                          const QwDeflateHuffman *literal,
                          const QwDeflateHuffman *distance,
-                         uint8_t *output, size_t output_size,
+                         uint8_t *output, size_t output_capacity,
                          size_t *output_offset)
 {
     static const uint16_t length_base[29] = {
@@ -203,11 +209,12 @@ static int inflate_codes(QwDeflateBitReader *reader,
         uint32_t extra;
         if (!decode_symbol(reader, literal, 15u, &symbol)) return 0;
         if (symbol < 256u) {
-            if (*output_offset >= output_size) return 0;
+            if (*output_offset >= output_capacity)
+                return QW_DEFLATE_OUTPUT_FULL;
             output[(*output_offset)++] = (uint8_t)symbol;
             continue;
         }
-        if (symbol == 256u) return 1;
+        if (symbol == 256u) return QW_DEFLATE_OK;
         if (symbol < 257u || symbol > 285u) return 0;
         {
             unsigned length_index = (unsigned)symbol - 257u;
@@ -226,8 +233,9 @@ static int inflate_codes(QwDeflateBitReader *reader,
                 if (!read_bits(reader, distance_extra[distance_symbol], &extra)) return 0;
                 back += extra;
             }
-            if (!back || back > *output_offset ||
-                length > output_size - *output_offset) return 0;
+            if (!back || back > *output_offset) return QW_DEFLATE_INVALID;
+            if (length > output_capacity - *output_offset)
+                return QW_DEFLATE_OUTPUT_FULL;
             for (i = 0; i < length; ++i) {
                 output[*output_offset] = output[*output_offset - back];
                 ++*output_offset;
@@ -236,20 +244,25 @@ static int inflate_codes(QwDeflateBitReader *reader,
     }
 }
 
-int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
-                               uint8_t *output, size_t output_size)
+static QwCompressionInflateStatus inflate_raw_core(
+    const uint8_t *input, size_t input_size, uint8_t *output,
+    size_t output_capacity, int allow_trailing, size_t *out_size,
+    size_t *consumed_input_size)
 {
     QwDeflateBitReader reader;
     size_t output_offset = 0;
     int final_block = 0;
-    if (!input || (!output && output_size) || input_size > SIZE_MAX / 8u) return 0;
+    if (out_size) *out_size = 0u;
+    if (consumed_input_size) *consumed_input_size = 0u;
+    if (!input || !out_size || (!output && output_capacity) ||
+        input_size > SIZE_MAX / 8u) return QW_DEFLATE_INVALID;
     reader.data = input;
     reader.size = input_size;
     reader.bit_offset = 0;
     while (!final_block) {
         uint32_t final_value, type;
         if (!read_bits(&reader, 1u, &final_value) ||
-            !read_bits(&reader, 2u, &type)) return 0;
+            !read_bits(&reader, 2u, &type)) return QW_DEFLATE_INVALID;
         final_block = (int)final_value;
         if (type == 0u) {
             uint32_t length, inverse;
@@ -257,8 +270,11 @@ int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
             if (!read_bits(&reader, 16u, &length) ||
                 !read_bits(&reader, 16u, &inverse) ||
                 (length ^ 0xffffu) != inverse ||
-                length > output_size - output_offset ||
                 (size_t)length > input_size - (reader.bit_offset >> 3)) return 0;
+            if ((size_t)length > output_capacity - output_offset) {
+                *out_size = output_offset;
+                return QW_DEFLATE_OUTPUT_FULL;
+            }
             if (length) {
                 memcpy(output + output_offset,
                        input + (reader.bit_offset >> 3), (size_t)length);
@@ -270,13 +286,110 @@ int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
             int trees_ok = type == 1u
                 ? build_fixed_trees(&literal, &distance)
                 : build_dynamic_trees(&reader, &literal, &distance);
-            if (!trees_ok || !inflate_codes(&reader, &literal, &distance,
-                                            output, output_size,
-                                            &output_offset)) return 0;
+            int decode_status;
+            if (!trees_ok) return QW_DEFLATE_INVALID;
+            decode_status = inflate_codes(&reader, &literal, &distance,
+                                          output, output_capacity,
+                                          &output_offset);
+            if (decode_status != QW_DEFLATE_OK) {
+                *out_size = output_offset;
+                return (QwCompressionInflateStatus)decode_status;
+            }
         } else {
-            return 0;
+            return QW_DEFLATE_INVALID;
         }
     }
-    return output_offset == output_size &&
-           (reader.bit_offset + 7u) / 8u == input_size;
+    if (consumed_input_size)
+        *consumed_input_size = (reader.bit_offset + 7u) / 8u;
+    if (!allow_trailing && (reader.bit_offset + 7u) / 8u != input_size)
+        return QW_DEFLATE_INVALID;
+    *out_size = output_offset;
+    return QW_DEFLATE_OK;
+}
+
+QwCompressionInflateStatus qw_compression_inflate_raw_bounded(
+    const uint8_t *input, size_t input_size, uint8_t *output,
+    size_t output_capacity, size_t *out_size)
+{
+    return inflate_raw_core(input, input_size, output, output_capacity,
+                            0, out_size, NULL);
+}
+
+int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
+                               uint8_t *output, size_t output_size)
+{
+    size_t decoded_size = 0u;
+    return inflate_raw_core(input, input_size, output, output_size, 0,
+                            &decoded_size, NULL) == QW_DEFLATE_OK &&
+           decoded_size == output_size;
+}
+
+static uint16_t read_u16_le(const uint8_t *input)
+{
+    return (uint16_t)((uint16_t)input[0] | ((uint16_t)input[1] << 8));
+}
+
+static uint32_t read_u32_le(const uint8_t *input)
+{
+    return (uint32_t)input[0] | ((uint32_t)input[1] << 8) |
+           ((uint32_t)input[2] << 16) | ((uint32_t)input[3] << 24);
+}
+
+int qw_compression_inflate_gzip(const uint8_t *input, size_t input_size,
+                                uint8_t *output, size_t output_size)
+{
+    size_t trailer_offset;
+    size_t payload_offset = 10u;
+    size_t decoded_size = 0u;
+    size_t consumed_size = 0u;
+    uint8_t flags;
+    QwCompressionInflateStatus status;
+    if (!input || (!output && output_size) || input_size < 18u)
+        return 0;
+    if (input[0] != 0x1fu || input[1] != 0x8bu || input[2] != 8u)
+        return 0;
+    flags = input[3];
+    if (flags & 0xe0u) return 0;
+    trailer_offset = input_size - 8u;
+    if (payload_offset > trailer_offset) return 0;
+
+    if (flags & 0x04u) {
+        size_t extra_size;
+        if (trailer_offset - payload_offset < 2u) return 0;
+        extra_size = read_u16_le(input + payload_offset);
+        payload_offset += 2u;
+        if (extra_size > trailer_offset - payload_offset) return 0;
+        payload_offset += extra_size;
+    }
+    if (flags & 0x08u) {
+        while (payload_offset < trailer_offset && input[payload_offset])
+            ++payload_offset;
+        if (payload_offset == trailer_offset) return 0;
+        ++payload_offset;
+    }
+    if (flags & 0x10u) {
+        while (payload_offset < trailer_offset && input[payload_offset])
+            ++payload_offset;
+        if (payload_offset == trailer_offset) return 0;
+        ++payload_offset;
+    }
+    if (flags & 0x02u) {
+        uint16_t expected_header_crc;
+        if (trailer_offset - payload_offset < 2u) return 0;
+        expected_header_crc = read_u16_le(input + payload_offset);
+        if ((uint16_t)qw_compression_crc32(input, payload_offset) !=
+            expected_header_crc) return 0;
+        payload_offset += 2u;
+    }
+    if (payload_offset > trailer_offset ||
+        read_u32_le(input + trailer_offset + 4u) != (uint32_t)output_size)
+        return 0;
+
+    status = inflate_raw_core(input + payload_offset,
+                              trailer_offset - payload_offset, output,
+                              output_size, 1, &decoded_size, &consumed_size);
+    if (status != QW_DEFLATE_OK || decoded_size != output_size ||
+        consumed_size != trailer_offset - payload_offset) return 0;
+    return qw_compression_crc32(output, output_size) ==
+           read_u32_le(input + trailer_offset);
 }

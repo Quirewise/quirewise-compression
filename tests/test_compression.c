@@ -50,6 +50,16 @@ int main(void)
         0x78u, 0x01u, 0x01u, 0x00u, 0x00u, 0xffu, 0xffu,
         0x00u, 0x00u, 0x00u, 0x01u
     };
+    static const uint8_t gzip_stored_abc[] = {
+        0x1fu, 0x8bu, 0x08u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x03u,
+        0x01u, 0x03u, 0x00u, 0xfcu, 0xffu, 'a', 'b', 'c',
+        0xc2u, 0x41u, 0x24u, 0x35u, 0x03u, 0x00u, 0x00u, 0x00u
+    };
+    static const uint8_t gzip_stored_empty[] = {
+        0x1fu, 0x8bu, 0x08u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x03u,
+        0x01u, 0x00u, 0x00u, 0xffu, 0xffu,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+    };
     static const uint8_t fixed_expected[] =
         "The quick brown fox jumps over the lazy dog. "
         "The quick brown fox jumps over the lazy dog.";
@@ -71,6 +81,7 @@ int main(void)
     size_t dynamic_size;
     size_t encoded_size;
     size_t expected_size;
+    size_t bounded_size;
     size_t i;
 
     CHECK(qw_compression_abi_version() == 1u);
@@ -107,6 +118,57 @@ int main(void)
         sizeof(dictionary_header), output, 0u));
     CHECK(!qw_compression_inflate_zlib(zlib_stored_abc,
         sizeof(zlib_stored_abc) - 1u, output, 3u));
+
+    bounded_size = SIZE_MAX;
+    CHECK(qw_compression_inflate_raw_bounded(
+        raw_stored_abc, sizeof(raw_stored_abc), output, 2u,
+        &bounded_size) == QW_COMPRESSION_INFLATE_OUTPUT_FULL);
+    CHECK(bounded_size == 0u);
+    CHECK(qw_compression_inflate_raw_bounded(
+        raw_stored_abc, sizeof(raw_stored_abc), output, 3u,
+        &bounded_size) == QW_COMPRESSION_INFLATE_OK);
+    CHECK(bounded_size == 3u && memcmp(output, "abc", 3u) == 0);
+    CHECK(qw_compression_inflate_raw_bounded(
+        raw_stored_abc, sizeof(raw_stored_abc) - 1u, output, 3u,
+        &bounded_size) == QW_COMPRESSION_INFLATE_ERROR);
+
+    bounded_size = SIZE_MAX;
+    CHECK(qw_compression_inflate_zlib_bounded(
+        zlib_stored_abc, sizeof(zlib_stored_abc), output, 2u,
+        &bounded_size) == QW_COMPRESSION_INFLATE_OUTPUT_FULL);
+    CHECK(bounded_size == 0u);
+    CHECK(qw_compression_inflate_zlib_bounded(
+        zlib_stored_abc, sizeof(zlib_stored_abc), output, 3u,
+        &bounded_size) == QW_COMPRESSION_INFLATE_OK);
+    CHECK(bounded_size == 3u && memcmp(output, "abc", 3u) == 0);
+    CHECK(qw_compression_inflate_zlib_bounded(
+        zlib_stored_abc, sizeof(zlib_stored_abc), output, 3u, NULL) ==
+        QW_COMPRESSION_INFLATE_ERROR);
+
+    CHECK(qw_compression_inflate_gzip(
+        gzip_stored_abc, sizeof(gzip_stored_abc), output, 3u));
+    CHECK(memcmp(output, "abc", 3u) == 0);
+    CHECK(qw_compression_inflate_gzip(
+        gzip_stored_empty, sizeof(gzip_stored_empty), NULL, 0u));
+    CHECK(!qw_compression_inflate_gzip(
+        gzip_stored_abc, sizeof(gzip_stored_abc), output, 2u));
+    memcpy(compressed, gzip_stored_abc, sizeof(gzip_stored_abc));
+    compressed[sizeof(gzip_stored_abc) - 8u] ^= 1u;
+    CHECK(!qw_compression_inflate_gzip(
+        compressed, sizeof(gzip_stored_abc), output, 3u));
+    memcpy(compressed, gzip_stored_abc, sizeof(gzip_stored_abc));
+    compressed[3] = 0xe0u;
+    CHECK(!qw_compression_inflate_gzip(
+        compressed, sizeof(gzip_stored_abc), output, 3u));
+    memcpy(compressed, gzip_stored_abc, sizeof(gzip_stored_abc));
+    compressed[sizeof(gzip_stored_abc)] = 0u;
+    CHECK(!qw_compression_inflate_gzip(
+        compressed, sizeof(gzip_stored_abc) + 1u, output, 3u));
+    memcpy(compressed, gzip_stored_abc, sizeof(gzip_stored_abc));
+    memcpy(compressed + sizeof(gzip_stored_abc), gzip_stored_abc,
+           sizeof(gzip_stored_abc));
+    CHECK(!qw_compression_inflate_gzip(
+        compressed, sizeof(gzip_stored_abc) * 2u, output, 3u));
 
     fixed_size = decode_hex(fixed_hex, fixed_stream, sizeof(fixed_stream));
     CHECK(fixed_size > 0u);

@@ -40,6 +40,40 @@ int qw_compression_inflate_zlib(const uint8_t *input, size_t input_size,
     return qw_compression_adler32(output, output_size) == expected_adler;
 }
 
+QwCompressionInflateStatus qw_compression_inflate_zlib_bounded(
+    const uint8_t *input, size_t input_size, uint8_t *output,
+    size_t output_capacity, size_t *out_size)
+{
+    uint8_t cmf;
+    uint8_t flg;
+    uint32_t expected_adler;
+    QwCompressionInflateStatus status;
+    size_t decoded_size = 0u;
+    if (out_size) *out_size = 0u;
+    if (!input || !out_size || (!output && output_capacity) || input_size < 6u)
+        return QW_COMPRESSION_INFLATE_ERROR;
+    cmf = input[0];
+    flg = input[1];
+    if ((cmf & 0x0fu) != 8u || (cmf >> 4) > 7u ||
+        ((((uint32_t)cmf << 8) | flg) % 31u) != 0u || (flg & 0x20u)) {
+        return QW_COMPRESSION_INFLATE_ERROR;
+    }
+    expected_adler = ((uint32_t)input[input_size - 4u] << 24) |
+                     ((uint32_t)input[input_size - 3u] << 16) |
+                     ((uint32_t)input[input_size - 2u] << 8) |
+                     (uint32_t)input[input_size - 1u];
+    status = qw_compression_inflate_raw_bounded(
+        input + 2u, input_size - 6u, output, output_capacity, &decoded_size);
+    if (status != QW_COMPRESSION_INFLATE_OK) {
+        *out_size = decoded_size;
+        return status;
+    }
+    if (qw_compression_adler32(output, decoded_size) != expected_adler)
+        return QW_COMPRESSION_INFLATE_ERROR;
+    *out_size = decoded_size;
+    return QW_COMPRESSION_INFLATE_OK;
+}
+
 int qw_compression_deflate_raw_stored(const uint8_t *input, size_t input_size,
                                       uint8_t *output, size_t output_capacity,
                                       size_t *out_size)
