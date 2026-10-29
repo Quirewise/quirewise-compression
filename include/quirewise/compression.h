@@ -10,6 +10,28 @@ extern "C" {
 
 #define QUIREWISE_COMPRESSION_ABI_VERSION 1u
 
+enum { QW_COMPRESSION_7Z_MAX_CODERS = 4u };
+
+enum {
+    QW_COMPRESSION_7Z_COPY_METHOD = 0x00u,
+    QW_COMPRESSION_7Z_DELTA_METHOD = 0x03u,
+    QW_COMPRESSION_7Z_LZMA1_METHOD = 0x030101u,
+    QW_COMPRESSION_7Z_LZMA2_METHOD = 0x21u,
+    QW_COMPRESSION_7Z_DEFLATE_METHOD = 0x040108u,
+    QW_COMPRESSION_7Z_X86_METHOD = 0x03030103u,
+    QW_COMPRESSION_7Z_POWERPC_METHOD = 0x03030205u,
+    QW_COMPRESSION_7Z_IA64_METHOD = 0x03030401u,
+    QW_COMPRESSION_7Z_ARM_METHOD = 0x03030501u,
+    QW_COMPRESSION_7Z_ARMTHUMB_METHOD = 0x03030701u,
+    QW_COMPRESSION_7Z_SPARC_METHOD = 0x03030805u
+};
+
+typedef struct QwCompression7zCoder {
+    uint32_t method;
+    const uint8_t *properties;
+    size_t properties_size;
+} QwCompression7zCoder;
+
 /*
  * Compression and decompression functions return 1 on success and 0 on
  * invalid arguments, malformed input, insufficient output capacity, or a
@@ -31,6 +53,14 @@ int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
 /* RFC 1950 zlib wrapper around RFC 1951 inflate, including Adler-32 checks. */
 int qw_compression_inflate_zlib(const uint8_t *input, size_t input_size,
                                 uint8_t *output, size_t output_size);
+
+/* Decode a 7z coder chain using raw LZMA filters and Quirewise Deflate.
+ * Input and output buffers must not overlap. memory_limit caps the decoder's
+ * estimated memory use. */
+int qw_compression_inflate_7z_chain(
+    const QwCompression7zCoder *coders, size_t coder_count,
+    const uint8_t *input, size_t input_size,
+    uint8_t *output, size_t output_size, size_t memory_limit);
 
 /* RFC 1951 stored-block encoder. Empty input is encoded as one empty block. */
 int qw_compression_deflate_raw_stored(const uint8_t *input, size_t input_size,

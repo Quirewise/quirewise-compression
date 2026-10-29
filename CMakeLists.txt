@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.21)
-project(QuirewiseCompression VERSION 0.1.0 LANGUAGES C)
+project(QuirewiseCompression VERSION 0.2.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
+find_package(LibLZMA REQUIRED)
 
 add_library(quirewise_compression STATIC
     src/checksum.c
     src/deflate.c
+    src/seven_zip.c
     src/zlib.c)
 add_library(Quirewise::Compression ALIAS quirewise_compression)
 set_target_properties(quirewise_compression PROPERTIES
@@ -17,12 +19,18 @@ target_compile_features(quirewise_compression PUBLIC c_std_11)
 target_include_directories(quirewise_compression PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+target_link_libraries(quirewise_compression PUBLIC LibLZMA::LibLZMA)
 
 if(BUILD_TESTING)
     add_executable(test_compression tests/test_compression.c)
     target_compile_features(test_compression PRIVATE c_std_11)
     target_link_libraries(test_compression PRIVATE Quirewise::Compression)
     add_test(NAME compression_vectors COMMAND test_compression)
+
+    add_executable(test_seven_zip tests/test_seven_zip.c)
+    target_compile_features(test_seven_zip PRIVATE c_std_11)
+    target_link_libraries(test_seven_zip PRIVATE Quirewise::Compression)
+    add_test(NAME compression_7z_vectors COMMAND test_seven_zip)
 endif()
 
 install(TARGETS quirewise_compression EXPORT QuirewiseCompressionTargets
