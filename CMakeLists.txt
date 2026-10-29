@@ -4,9 +4,25 @@ project(QuirewiseCompression VERSION 0.3.0 LANGUAGES C)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
-find_package(LibLZMA REQUIRED)
 
 add_library(quirewise_compression STATIC
+    src/internal/lzma_sdk/7zCrcOpt.c
+    src/internal/lzma_sdk/7zCrc.c
+    src/internal/lzma_sdk/Alloc.c
+    src/internal/lzma_sdk/Bra.c
+    src/internal/lzma_sdk/Bra86.c
+    src/internal/lzma_sdk/BraIA64.c
+    src/internal/lzma_sdk/CpuArch.c
+    src/internal/lzma_sdk/Delta.c
+    src/internal/lzma_sdk/Lzma2Dec.c
+    src/internal/lzma_sdk/LzmaDec.c
+    src/internal/lzma_sdk/Sha256.c
+    src/internal/lzma_sdk/Sha256Opt.c
+    src/internal/lzma_sdk/Xz.c
+    src/internal/lzma_sdk/XzCrc64.c
+    src/internal/lzma_sdk/XzCrc64Opt.c
+    src/internal/lzma_sdk/XzDec.c
+    src/internal/lzma_sdk_allocator.c
     src/checksum.c
     src/deflate.c
     src/seven_zip.c
@@ -20,7 +36,9 @@ target_compile_features(quirewise_compression PUBLIC c_std_11)
 target_include_directories(quirewise_compression PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-target_link_libraries(quirewise_compression PUBLIC LibLZMA::LibLZMA)
+target_include_directories(quirewise_compression PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/lzma_sdk")
+target_compile_definitions(quirewise_compression PRIVATE Z7_ST=1)
 
 if(BUILD_TESTING)
     add_executable(test_compression tests/test_compression.c)

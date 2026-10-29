@@ -32,6 +32,8 @@ int main(void)
     uint8_t output[sizeof(expected) - 1u];
     uint8_t prefix[XZ_PREFIX_SIZE];
     uint8_t damaged[sizeof(xz_stream)];
+    uint8_t concatenated[sizeof(xz_stream) * 2u];
+    uint8_t doubled_output[sizeof(output) * 2u];
 
     CHECK(qw_compression_inflate_xz(xz_stream, sizeof(xz_stream), output,
                                     sizeof(output), 64u * 1024u * 1024u));
@@ -47,6 +49,11 @@ int main(void)
                                      sizeof(output), 1u));
     CHECK(!qw_compression_inflate_xz_prefix(
         xz_stream, 12u, output, sizeof(output), 64u * 1024u * 1024u));
+    memcpy(concatenated, xz_stream, sizeof(xz_stream));
+    memcpy(concatenated + sizeof(xz_stream), xz_stream, sizeof(xz_stream));
+    CHECK(!qw_compression_inflate_xz(
+        concatenated, sizeof(concatenated), doubled_output,
+        sizeof(doubled_output), 64u * 1024u * 1024u));
 
     memcpy(damaged, xz_stream, sizeof(damaged));
     damaged[sizeof(damaged) - 30u] ^= 1u;

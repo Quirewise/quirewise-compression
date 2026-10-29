@@ -1,51 +1,67 @@
 #include <quirewise/compression.h>
 
-#include <lzma.h>
+#include "internal/lzma_sdk_allocator.h"
+
+#include "Xz.h"
+
+static int inflate_xz(const uint8_t *input, size_t input_size,
+                      uint8_t *output, size_t output_size,
+                      size_t memory_limit, int allow_prefix)
+{
+    QwLzmaSdkAllocator allocator;
+    CXzUnpacker unpacker;
+    size_t input_position = 0u;
+    size_t output_position = 0u;
+    int success = 0;
+
+    if (!input || !input_size || !output || !output_size || !memory_limit)
+        return 0;
+    qw_lzma_sdk_initialize();
+    qw_lzma_sdk_allocator_init(&allocator, memory_limit);
+    XzUnpacker_Construct(&unpacker, &allocator.interface);
+    for (;;) {
+        SizeT source_size = input_size - input_position;
+        SizeT destination_size = output_size - output_position;
+        ECoderStatus status = CODER_STATUS_NOT_SPECIFIED;
+        SRes result = XzUnpacker_Code(
+            &unpacker, output + output_position, &destination_size,
+            input + input_position, &source_size, True,
+            allow_prefix ? CODER_FINISH_ANY : CODER_FINISH_END, &status);
+        int made_progress;
+
+        input_position += source_size;
+        output_position += destination_size;
+        made_progress = source_size != 0u || destination_size != 0u;
+        if (allow_prefix && output_position == output_size) {
+            success = 1;
+            break;
+        }
+        if (result != SZ_OK) break;
+        if (!allow_prefix && input_position == input_size &&
+                   output_position == output_size &&
+                   unpacker.numFinishedStreams == 1u &&
+                   XzUnpacker_IsStreamWasFinished(&unpacker)) {
+            success = 1;
+            break;
+        }
+        if (!made_progress ||
+            (status == CODER_STATUS_NEEDS_MORE_INPUT &&
+             input_position == input_size)) break;
+    }
+    XzUnpacker_Free(&unpacker);
+    return success && allocator.bytes_used == 0u;
+}
 
 int qw_compression_inflate_xz(const uint8_t *input, size_t input_size,
                               uint8_t *output, size_t output_size,
                               size_t memory_limit)
 {
-    size_t input_position = 0u;
-    size_t output_position = 0u;
-    uint64_t decoder_memory;
-    lzma_ret result;
-
-    if (!input || !input_size || !output || !output_size || !memory_limit) {
-        return 0;
-    }
-    decoder_memory = (uint64_t)memory_limit;
-    result = lzma_stream_buffer_decode(&decoder_memory, 0u, NULL,
-                                       input, &input_position, input_size,
-                                       output, &output_position, output_size);
-    return result == LZMA_OK && input_position == input_size &&
-           output_position == output_size;
+    return inflate_xz(input, input_size, output, output_size, memory_limit, 0);
 }
 
 int qw_compression_inflate_xz_prefix(const uint8_t *input, size_t input_size,
                                      uint8_t *output, size_t output_size,
                                      size_t memory_limit)
 {
-    lzma_stream stream = LZMA_STREAM_INIT;
-    lzma_ret result;
-    int success;
-
-    if (!input || !input_size || !output || !output_size || !memory_limit) {
-        return 0;
-    }
-    result = lzma_stream_decoder(&stream, (uint64_t)memory_limit, 0u);
-    if (result != LZMA_OK) return 0;
-
-    stream.next_in = input;
-    stream.avail_in = input_size;
-    stream.next_out = output;
-    stream.avail_out = output_size;
-    for (;;) {
-        result = lzma_code(&stream, LZMA_FINISH);
-        if (stream.avail_out == 0u) break;
-        if (result != LZMA_OK) break;
-    }
-    success = stream.avail_out == 0u;
-    lzma_end(&stream);
-    return success;
+    return inflate_xz(input, input_size, output, output_size, memory_limit, 1);
 }

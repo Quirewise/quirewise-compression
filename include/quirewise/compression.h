@@ -80,23 +80,24 @@ int qw_compression_inflate_gzip(const uint8_t *input, size_t input_size,
                                 uint8_t *output, size_t output_size);
 
 /* Decode a 7z coder chain using raw LZMA filters and Quirewise Deflate.
- * Input and output buffers must not overlap. memory_limit caps the decoder's
- * estimated memory use. */
+ * Input and output buffers must not overlap. memory_limit caps decoder-owned
+ * allocations. */
 int qw_compression_inflate_7z_chain(
     const QwCompression7zCoder *coders, size_t coder_count,
     const uint8_t *input, size_t input_size,
     uint8_t *output, size_t output_size, size_t memory_limit);
 
 /* Decode one complete XZ stream, requiring exact input and output sizes.
- * memory_limit caps decoder memory. Input and output buffers must not overlap. */
+ * memory_limit caps decoder-owned allocations. Input and output buffers must
+ * not overlap. */
 int qw_compression_inflate_xz(const uint8_t *input, size_t input_size,
                               uint8_t *output, size_t output_size,
                               size_t memory_limit);
 
 /* Decode an XZ stream prefix into exactly output_size bytes. The function
  * stops when the output buffer fills, so it may not validate the stream
- * trailer or remaining input. memory_limit caps decoder memory. Input and
- * output buffers must not overlap. */
+ * trailer or remaining input. memory_limit caps decoder-owned allocations.
+ * Input and output buffers must not overlap. */
 int qw_compression_inflate_xz_prefix(const uint8_t *input, size_t input_size,
                                      uint8_t *output, size_t output_size,
                                      size_t memory_limit);
