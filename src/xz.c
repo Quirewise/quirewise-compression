@@ -14,7 +14,12 @@ static int inflate_xz(const uint8_t *input, size_t input_size,
     size_t output_position = 0u;
     int success = 0;
 
-    if (!input || !input_size || !output || !output_size || !memory_limit)
+    if (!input || !input_size || !memory_limit)
+        return 0;
+    /* A valid stream may legitimately decode to zero bytes (for example an XZ
+     * container with no blocks), so a zero-length output is allowed when no
+     * buffer is supplied. */
+    if (!output && output_size != 0u)
         return 0;
     qw_lzma_sdk_initialize();
     qw_lzma_sdk_allocator_init(&allocator, memory_limit);
@@ -23,8 +28,10 @@ static int inflate_xz(const uint8_t *input, size_t input_size,
         SizeT source_size = input_size - input_position;
         SizeT destination_size = output_size - output_position;
         ECoderStatus status = CODER_STATUS_NOT_SPECIFIED;
+        uint8_t zero_sink = 0u;
+        uint8_t *destination = output ? output + output_position : &zero_sink;
         SRes result = XzUnpacker_Code(
-            &unpacker, output + output_position, &destination_size,
+            &unpacker, destination, &destination_size,
             input + input_position, &source_size, True,
             allow_prefix ? CODER_FINISH_ANY : CODER_FINISH_END, &status);
         int made_progress;

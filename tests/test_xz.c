@@ -60,6 +60,28 @@ int main(void)
     CHECK(!qw_compression_inflate_xz(damaged, sizeof(damaged), output,
                                      sizeof(output),
                                      64u * 1024u * 1024u));
-    puts("PASS: XZ known-answer, prefix, memory cap, and integrity vectors");
+
+    /* A structurally valid XZ stream with zero blocks, produced by `printf '' |
+     * xz` (32 bytes, CRC64 check, backward size 1). It must succeed and
+     * produce exactly zero output bytes. */
+    {
+        static const uint8_t empty_stream[] = {
+            0xfdu, 0x37u, 0x7au, 0x58u, 0x5au, 0x00u, 0x00u, 0x04u,
+            0xe6u, 0xd6u, 0xb4u, 0x46u, 0x00u, 0x00u, 0x00u, 0x00u,
+            0x1cu, 0xdfu, 0x44u, 0x21u, 0x1fu, 0xb6u, 0xf3u, 0x7du,
+            0x01u, 0x00u, 0x00u, 0x00u, 0x00u, 0x04u, 0x59u, 0x5au
+        };
+        uint8_t empty_output[1] = {0xa5u};
+        CHECK(qw_compression_inflate_xz(empty_stream, sizeof(empty_stream),
+                                        empty_output, 0u,
+                                        64u * 1024u * 1024u));
+        CHECK(empty_output[0] == 0xa5u);
+        /* Empty input is never a valid stream. */
+        CHECK(!qw_compression_inflate_xz(empty_stream, 0u, empty_output, 0u,
+                                         64u * 1024u * 1024u));
+        CHECK(!qw_compression_inflate_xz(NULL, 0u, empty_output, 0u,
+                                         64u * 1024u * 1024u));
+    }
+    puts("PASS: XZ known-answer, prefix, memory cap, integrity, empty-stream and empty-input vectors");
     return 0;
 }
