@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 3.21)
 project(QuirewiseCompression VERSION 0.3.0 LANGUAGES C)
+option(QUIREWISE_BUILD_SHARED "Build Quirewise libraries as shared libraries" OFF)
+if(QUIREWISE_BUILD_SHARED)
+    set(QW_LIBRARY_TYPE SHARED)
+else()
+    set(QW_LIBRARY_TYPE STATIC)
+endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
 
-add_library(quirewise_compression STATIC
+add_library(quirewise_compression ${QW_LIBRARY_TYPE}
     src/internal/lzma_sdk/7zCrcOpt.c
     src/internal/lzma_sdk/7zCrc.c
     src/internal/lzma_sdk/Alloc.c
@@ -79,3 +85,9 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/QuirewiseCompressionConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/QuirewiseCompressionConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/QuirewiseCompression")
+
+if(QUIREWISE_BUILD_SHARED AND WIN32)
+    set_target_properties(
+        quirewise_compression
+        PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
