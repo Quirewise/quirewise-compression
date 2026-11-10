@@ -11,29 +11,13 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
 
-add_library(quirewise_compression ${QW_LIBRARY_TYPE}
-    src/internal/lzma_sdk/7zCrcOpt.c
-    src/internal/lzma_sdk/7zCrc.c
-    src/internal/lzma_sdk/Alloc.c
-    src/internal/lzma_sdk/Bra.c
-    src/internal/lzma_sdk/Bra86.c
-    src/internal/lzma_sdk/BraIA64.c
-    src/internal/lzma_sdk/CpuArch.c
-    src/internal/lzma_sdk/Delta.c
-    src/internal/lzma_sdk/Lzma2Dec.c
-    src/internal/lzma_sdk/LzmaDec.c
-    src/internal/lzma_sdk/Sha256.c
-    src/internal/lzma_sdk/Sha256Opt.c
-    src/internal/lzma_sdk/Xz.c
-    src/internal/lzma_sdk/XzCrc64.c
-    src/internal/lzma_sdk/XzCrc64Opt.c
-    src/internal/lzma_sdk/XzDec.c
-    src/internal/lzma_sdk_allocator.c
-    src/checksum.c
+add_library(quirewise_compression     src/checksum.c
     src/deflate.c
     src/seven_zip.c
     src/xz.c
-    src/zlib.c)
+    src/zlib.c
+    src/internal/lzma.c
+    src/internal/xz_dec.c)
 add_library(Quirewise::Compression ALIAS quirewise_compression)
 set_target_properties(quirewise_compression PROPERTIES
     EXPORT_NAME Compression
