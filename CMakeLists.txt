@@ -26,9 +26,6 @@ target_compile_features(quirewise_compression PUBLIC c_std_11)
 target_include_directories(quirewise_compression PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-target_include_directories(quirewise_compression PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/lzma_sdk")
-target_compile_definitions(quirewise_compression PRIVATE Z7_ST=1)
 
 if(BUILD_TESTING)
     add_executable(test_compression tests/test_compression.c)
