@@ -5,7 +5,6 @@
 
 #include "qw_lzma.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -458,10 +457,12 @@ static int decode_block(const uint8_t *in, size_t in_size,
         memory_limit)
         return 0;
 
-    if (getenv("XZ_DBG")) fprintf(stderr, "hdr ok hsize=%zu filters=%zu has_comp=%d has_uncomp=%d comp=%llu uncomp=%llu cap=%zu\n", header_size, filter_count, has_comp, has_uncomp, (unsigned long long)comp_size, (unsigned long long)uncomp_size, out_capacity);
     data_start = header_size;
     if (has_comp && comp_size > in_size - data_start) return 0;
-    if (has_uncomp && uncomp_size > SIZE_MAX) return 0;
+    if (has_uncomp &&
+        (uncomp_size > (uint64_t)SIZE_MAX ||
+         uncomp_size > (uint64_t)memory_limit))
+        return 0;
 
     if (has_uncomp) {
         capacity = (size_t)uncomp_size;
@@ -474,6 +475,7 @@ static int decode_block(const uint8_t *in, size_t in_size,
         if (capacity < out_capacity) return 0;
     }
     if (capacity == 0u) capacity = 1u;
+    if (capacity > memory_limit) return 0;
     block = (uint8_t *)malloc(capacity);
     if (!block) return 0;
     for (;;) {
@@ -485,16 +487,22 @@ static int decode_block(const uint8_t *in, size_t in_size,
             filters[filter_count - 1u].props[0], block, capacity, &in_used,
             &out_used);
         if (!ok) {
-            if (!prefix || has_comp || has_uncomp || capacity > ((size_t)1 << 26)) {
+            uint8_t *grown;
+            if (!prefix || has_comp || has_uncomp ||
+                capacity > ((size_t)1 << 26) ||
+                capacity > memory_limit / 2u) {
                 free(block);
                 return 0;
             }
             capacity *= 2u;
-            block = (uint8_t *)realloc(block, capacity);
-            if (!block) return 0;
+            grown = (uint8_t *)realloc(block, capacity);
+            if (!grown) {
+                free(block);
+                return 0;
+            }
+            block = grown;
             continue;
         }
-        if (getenv("XZ_DBG")) fprintf(stderr, "chunk ok in=%zu out=%zu\n", in_used, out_used);
         if (has_uncomp && out_used != (size_t)uncomp_size) {
             free(block);
             return 0;
@@ -560,7 +568,6 @@ int qw_xz_decode(const uint8_t *in, size_t in_size, uint8_t *out,
             if (!decode_block(in + pos, in_size - pos, &block, &block_size,
                               &consumed, memory_limit, allow_prefix,
                               out_size - out_pos)) {
-                if (getenv("XZ_DBG")) fprintf(stderr, "decode_block fail at %zu\n", pos);
                 return 0;
             }
             pos += consumed;

@@ -12,6 +12,18 @@
 
 enum { XZ_PREFIX_SIZE = 11u };
 
+static size_t put_vli(uint8_t *out, uint64_t value)
+{
+    size_t count = 0u;
+    do {
+        uint8_t byte = (uint8_t)(value & 0x7fu);
+        value >>= 7;
+        if (value) byte |= 0x80u;
+        out[count++] = byte;
+    } while (value);
+    return count;
+}
+
 int main(void)
 {
     static const uint8_t xz_stream[] = {
@@ -82,6 +94,45 @@ int main(void)
         CHECK(!qw_compression_inflate_xz(NULL, 0u, empty_output, 0u,
                                          64u * 1024u * 1024u));
     }
+    /* A block header may declare an arbitrary uncompressed size. Prefix mode
+     * must reject a size above the caller's memory_limit before allocating it,
+     * instead of trusting the field. */
+    {
+        uint8_t crafted[12u + 16u];
+        uint8_t tiny_output[1] = {0u};
+        size_t pos = 0u;
+        uint32_t crc;
+
+        crafted[0] = 0xfdu; crafted[1] = 0x37u; crafted[2] = 0x7au;
+        crafted[3] = 0x58u; crafted[4] = 0x5au; crafted[5] = 0x00u;
+        crafted[6] = 0x00u; crafted[7] = 0x00u; /* check: none */
+        crc = qw_compression_crc32(crafted + 6u, 2u);
+        crafted[8] = (uint8_t)(crc & 0xffu);
+        crafted[9] = (uint8_t)((crc >> 8) & 0xffu);
+        crafted[10] = (uint8_t)((crc >> 16) & 0xffu);
+        crafted[11] = (uint8_t)((crc >> 24) & 0xffu);
+
+        /* 16-byte block header: flags 0x80 (uncompressed size present),
+         * one LZMA2 filter, padding, then the header CRC. */
+        crafted[12] = 3u;    /* (size / 4) - 1 */
+        crafted[13] = 0x80u; /* has_uncomp, one filter */
+        pos = 14u;
+        pos += put_vli(crafted + pos, UINT64_C(1) << 36);
+        crafted[pos++] = 0x21u; /* LZMA2 */
+        crafted[pos++] = 0x01u; /* props size */
+        crafted[pos++] = 0x16u; /* dict size byte */
+        while (pos < 24u) crafted[pos++] = 0u;
+        crc = qw_compression_crc32(crafted + 12u, 12u);
+        crafted[24] = (uint8_t)(crc & 0xffu);
+        crafted[25] = (uint8_t)((crc >> 8) & 0xffu);
+        crafted[26] = (uint8_t)((crc >> 16) & 0xffu);
+        crafted[27] = (uint8_t)((crc >> 24) & 0xffu);
+
+        CHECK(!qw_compression_inflate_xz_prefix(
+            crafted, sizeof(crafted), tiny_output, sizeof(tiny_output),
+            64u * 1024u * 1024u));
+    }
+
     puts("PASS: XZ known-answer, prefix, memory cap, integrity, empty-stream and empty-input vectors");
     return 0;
 }
