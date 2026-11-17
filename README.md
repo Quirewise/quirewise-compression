@@ -106,6 +106,7 @@ known in advance.
 | XZ prefix | `qw_compression_inflate_xz_prefix` |
 | 7z coder chain | `qw_compression_inflate_7z_chain` |
 | Stored encode | `qw_compression_deflate_raw_stored`, `qw_compression_deflate_zlib_stored` |
+| Compressing encode | `qw_compression_deflate_raw`, `qw_compression_deflate_zlib` (fixed Huffman, stored fallback) |
 
 ## Behavior and limits
 
@@ -120,7 +121,8 @@ known in advance.
   Prefix decoding may leave the trailer unchecked by design.
 - 7z chains are linear. Multi-stream, encrypted and unsupported coders return
   failure. `memory_limit` caps decoder-owned allocations.
-- There is no encoder beyond stored DEFLATE blocks.
+- The encoder is fixed-Huffman only (no dynamic Huffman); the stored
+  functions remain available as the fallback path.
 
 ## Testing
 
