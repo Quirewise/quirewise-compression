@@ -1,7 +1,8 @@
 # quirewise-compression
 
-First-party DEFLATE, zlib, gzip, XZ and 7z decompression, plus a stored-block
-DEFLATE encoder. No zlib, liblzma or 7-Zip runtime dependency.
+First-party DEFLATE, zlib, gzip, XZ and 7z decompression, plus a fixed-Huffman
+DEFLATE encoder with a stored-block fallback. No zlib, liblzma or 7-Zip runtime
+dependency.
 
 `Quirewise::Compression` is an independent, MIT-licensed C11 library. It is
 installed as a CMake package and can be consumed without the Quirewise
@@ -14,12 +15,13 @@ application or any other Quirewise package.
 - Decodes linear 7z coder chains (LZMA1, LZMA2, Deflate, Copy, Delta and the
   x86/PPC/IA64/ARM/ARM-Thumb/SPARC BCJ filters).
 - Computes CRC-32 and Adler-32.
-- Encodes **stored** (uncompressed) DEFLATE and zlib streams.
-- Provides exact-size and bounded inflate entry points, plus size bounds for
-  stored streams.
+- Encodes DEFLATE and zlib streams: a single-hash LZ77 pass over the fixed
+  Huffman code, falling back to stored blocks when that is smaller.
+- Provides exact-size and bounded inflate entry points, plus worst-case size
+  bounds for both the compressing and stored encoders.
 
-It is not a general-purpose compressor: there is no LZ77/Huffman encoder, no
-XZ/7z writer, and no streaming API.
+It is not a general-purpose compressor: there is no dynamic-Huffman encoder,
+no XZ/7z writer, and no streaming API.
 
 ## Requirements
 

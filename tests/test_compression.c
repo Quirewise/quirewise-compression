@@ -243,6 +243,67 @@ int main(void)
     CHECK(!qw_compression_deflate_raw_stored(NULL, 1u, compressed,
         sizeof(compressed), &encoded_size));
 
+    /* Compressing encoder: bounds, round trips, size win and stored fallback. */
+    {
+        static const size_t text_size = 200000u;
+        uint8_t *text = (uint8_t *)malloc(text_size);
+        uint8_t *decoded = (uint8_t *)malloc(text_size);
+        size_t raw_bound = qw_compression_raw_bound(text_size);
+        size_t zlib_bound = qw_compression_zlib_bound(text_size);
+        uint8_t *encoded = (uint8_t *)malloc(raw_bound);
+        uint8_t *zlib = (uint8_t *)malloc(zlib_bound);
+        size_t raw_size = 0u;
+        size_t zsize = 0u;
+        size_t i;
+        CHECK(text && decoded && encoded && zlib);
+        CHECK(qw_compression_raw_bound(SIZE_MAX) == SIZE_MAX);
+        CHECK(qw_compression_zlib_bound(SIZE_MAX) == SIZE_MAX);
+
+        /* Repetitive markup text must beat the stored encoder by a wide margin. */
+        {
+            static const char pattern[] =
+                "<p class=\"body\">Quirewise conversion</p>\n";
+            size_t pattern_size = sizeof(pattern) - 1u;
+            for (i = 0u; i < text_size; ++i)
+                text[i] = (uint8_t)pattern[i % pattern_size];
+        }
+        CHECK(qw_compression_deflate_raw(text, text_size, encoded, raw_bound,
+                                         &raw_size));
+        CHECK(raw_size < text_size / 4u);
+        CHECK(qw_compression_inflate_raw(encoded, raw_size, decoded, text_size));
+        CHECK(memcmp(text, decoded, text_size) == 0);
+        CHECK(qw_compression_deflate_zlib(text, text_size, zlib, zlib_bound,
+                                          &zsize));
+        CHECK(zsize == raw_size + 6u);
+        CHECK(qw_compression_inflate_zlib(zlib, zsize, decoded, text_size));
+        CHECK(memcmp(text, decoded, text_size) == 0);
+
+        /* Incompressible bytes must fall back to stored blocks and never grow
+         * past the stored bound. */
+        for (i = 0u; i < text_size; ++i)
+            text[i] = (uint8_t)((i * 131u + i / 7u) & 0xffu);
+        CHECK(qw_compression_deflate_raw(text, text_size, encoded, raw_bound,
+                                         &raw_size));
+        CHECK(raw_size <= qw_compression_raw_stored_bound(text_size));
+        CHECK(qw_compression_inflate_raw(encoded, raw_size, decoded, text_size));
+        CHECK(memcmp(text, decoded, text_size) == 0);
+
+        /* Empty input and the capacity guard. */
+        CHECK(qw_compression_deflate_raw(NULL, 0u, encoded, raw_bound,
+                                         &raw_size));
+        CHECK(qw_compression_inflate_raw(encoded, raw_size, decoded, 0u));
+        encoded_size = 123u;
+        CHECK(!qw_compression_deflate_raw(text, text_size, encoded,
+                                          raw_bound - 1u, &encoded_size));
+        CHECK(encoded_size == 0u);
+        CHECK(!qw_compression_deflate_raw(NULL, 1u, encoded, raw_bound,
+                                          &encoded_size));
+        free(zlib);
+        free(encoded);
+        free(decoded);
+        free(text);
+    }
+
     puts("PASS: compression known-answer vectors and stored-stream round trips");
     return 0;
 }

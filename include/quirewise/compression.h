@@ -51,6 +51,13 @@ uint32_t qw_compression_adler32(const void *data, size_t size);
 size_t qw_compression_raw_stored_bound(size_t input_size);
 size_t qw_compression_zlib_stored_bound(size_t input_size);
 
+/* Worst-case output size for the compressing encoders below. The value is the
+ * larger of the fixed-Huffman bound and the stored bound, so a caller that
+ * allocates this many bytes can always encode, whatever the input looks like.
+ * Returns SIZE_MAX when the bound would overflow size_t. */
+size_t qw_compression_raw_bound(size_t input_size);
+size_t qw_compression_zlib_bound(size_t input_size);
+
 /* Raw RFC 1951 inflate; output_size is the exact expected decompressed size. */
 int qw_compression_inflate_raw(const uint8_t *input, size_t input_size,
                                uint8_t *output, size_t output_size);
@@ -112,6 +119,23 @@ int qw_compression_deflate_zlib_stored(const uint8_t *input, size_t input_size,
                                        uint8_t *output,
                                        size_t output_capacity,
                                        size_t *out_size);
+
+/* RFC 1951 compressing encoder: a single-hash LZ77 pass over the fixed Huffman
+ * code. The stream stays valid for any inflater; when the fixed-code result is
+ * not smaller than the input the encoder rewrites the same output buffer with
+ * stored blocks, so the returned size is never worse than the stored encoder.
+ * output_capacity must be at least qw_compression_raw_bound(input_size).
+ * Returns 1 on success and 0 on invalid arguments or insufficient capacity. */
+int qw_compression_deflate_raw(const uint8_t *input, size_t input_size,
+                               uint8_t *output, size_t output_capacity,
+                               size_t *out_size);
+
+/* RFC 1950 zlib stream around qw_compression_deflate_raw, including the
+ * Adler-32 trailer. output_capacity must be at least
+ * qw_compression_zlib_bound(input_size). */
+int qw_compression_deflate_zlib(const uint8_t *input, size_t input_size,
+                                uint8_t *output, size_t output_capacity,
+                                size_t *out_size);
 
 #ifdef __cplusplus
 }

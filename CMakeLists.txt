@@ -13,6 +13,7 @@ include(CTest)
 
 add_library(quirewise_compression     src/checksum.c
     src/deflate.c
+    src/deflate_encode.c
     src/seven_zip.c
     src/xz.c
     src/zlib.c
