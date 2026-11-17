@@ -44,11 +44,14 @@ typedef enum QwCompressionInflateStatus {
  * and report the bytes written through out_size. Deflate functions write to
  * caller-owned, non-overlapping buffers. */
 uint32_t qw_compression_abi_version(void);
+/*! Compute the zlib CRC-32 of a byte range. */
 uint32_t qw_compression_crc32(const void *data, size_t size);
+/*! Compute the zlib Adler-32 of a byte range. */
 uint32_t qw_compression_adler32(const void *data, size_t size);
 
 /* Return SIZE_MAX when a stored-stream bound would overflow size_t. */
 size_t qw_compression_raw_stored_bound(size_t input_size);
+/*! Upper bound for a stored zlib stream of input_size bytes. */
 size_t qw_compression_zlib_stored_bound(size_t input_size);
 
 /* Worst-case output size for the compressing encoders below. The value is the
@@ -56,6 +59,7 @@ size_t qw_compression_zlib_stored_bound(size_t input_size);
  * allocates this many bytes can always encode, whatever the input looks like.
  * Returns SIZE_MAX when the bound would overflow size_t. */
 size_t qw_compression_raw_bound(size_t input_size);
+/*! Upper bound for a compressed zlib stream of input_size bytes. */
 size_t qw_compression_zlib_bound(size_t input_size);
 
 /* Raw RFC 1951 inflate; output_size is the exact expected decompressed size. */
