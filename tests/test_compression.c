@@ -304,6 +304,34 @@ int main(void)
         free(text);
     }
 
+    /* Dynamic Huffman blocks round-trip and win on skewed data. */
+    {
+        size_t size = 4096u;
+        size_t bound = qw_compression_raw_bound(size);
+        uint8_t *data = (uint8_t *)malloc(size);
+        uint8_t *packed = (uint8_t *)malloc(bound);
+        uint8_t *plain = (uint8_t *)malloc(size + 64u);
+        size_t packed_size = 0u;
+        size_t plain_size = 0u;
+        size_t i;
+        QwCompressionInflateStatus status;
+        CHECK(data != NULL && packed != NULL && plain != NULL);
+        for (i = 0u; i < size; ++i)
+            data[i] = (uint8_t)((i % 10u == 0u) ? ('b' + (i % 7u)) : 'a');
+        CHECK(qw_compression_deflate_raw(data, size, packed, bound,
+                                         &packed_size));
+        CHECK(((packed[0] >> 1) & 3u) == 2u);
+        CHECK(packed_size < size);
+        status = qw_compression_inflate_raw_bounded(packed, packed_size, plain,
+                                                    size + 64u, &plain_size);
+        CHECK(status == QW_COMPRESSION_INFLATE_OK);
+        CHECK(plain_size == size);
+        CHECK(memcmp(data, plain, size) == 0);
+        free(data);
+        free(packed);
+        free(plain);
+    }
+
     puts("PASS: compression known-answer vectors and stored-stream round trips");
     return 0;
 }
